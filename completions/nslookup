@@ -7,9 +7,10 @@ _comp_cmd_nslookup__queryclass()
 
 _comp_cmd_nslookup__querytype()
 {
+    local -a types=($(named-rrcheck -T 2>/dev/null))
     # https://en.wikipedia.org/wiki/List_of_DNS_record_types
     # Resource records
-    local -a types=(
+    [ -z "$types" ] && types+=(
         A AAAA AFSDB APL CAA CDNSKEY CDS CERT CNAME CSYNC DHCID DLV DNAME
         DNSKEY DS EUI48 EUI64 HINFO HIP IPSECKEY KEY KX LOC MX NAPTR NS NSEC
         NSEC3 NSEC3PARAM OPENPGPKEY PTR RRSIG RP SIG SMIMEA SOA SRV SSHFP TA
@@ -21,6 +22,13 @@ _comp_cmd_nslookup__querytype()
     types+=(SPF)
 
     _comp_compgen -a -- -W '"${types[@]}"'
+}
+
+_comp_cmd_dig__dopts()
+{
+    local -a dopts=($(dig -h | awk '$1 ~ /^\s*[+]\[no\].*/ { sub(/\[=.*/,"",$1); sub(/=.*/,"=",$1); N=$1; sub(/\[no\]/,"",N); print N; sub(/\[no\]/,"no",$1); print $1}'))
+    _comp_compgen -- -W "${dopts[@]}"
+    [[ ${COMPREPLY-} == *= ]] && compopt -o nospace
 }
 
 _comp_cmd_nslookup()
@@ -88,6 +96,10 @@ _comp_cmd_host()
         _comp_compgen_usage
         return
     fi
+    if [[ $cur == +* ]]; then
+        _comp_compgen_dig__dopts
+        return
+    fi
 
     local REPLY
     _comp_count_args -a "-*[ctmNRW]"
@@ -101,5 +113,41 @@ _comp_cmd_host()
     fi
 } &&
     complete -F _comp_cmd_host host
+
+_comp_cmd_dig()
+{
+    local cur prev words cword comp_args
+    _comp_initialize -- "$@" || return
+
+    case $prev in
+        -c)
+            _comp_cmd_nslookup__queryclass
+            return
+            ;;
+        -t)
+            _comp_cmd_nslookup__querytype
+            return
+            ;;
+	-q)
+
+    esac
+
+    if [[ $cur == -* ]]; then
+        _comp_compgen_usage
+        return
+    fi
+
+    local REPLY
+    _comp_count_args -a "-*[ctmNRW]"
+    if ((REPLY == 1)); then
+        _comp_compgen_known_hosts -- "$cur"
+    elif ((REPLY == 2)); then
+        local ipvx
+        [[ ${words[*]} =~ \ -[^\ ]*([46]) ]] && ipvx=-${BASH_REMATCH[1]}
+        # shellcheck disable=SC2086
+        _comp_compgen_known_hosts ${ipvx-} -- "$cur"
+    fi
+} &&
+    complete -F _comp_cmd_dig dig
 
 # ex: filetype=sh
